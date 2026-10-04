@@ -1,0 +1,21 @@
+# dados de leads (privado)
+*.csv
+
+# cache local
+.cache/
+
+# venv
+.venv/
+venv/
+
+# python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# editor / SO
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
