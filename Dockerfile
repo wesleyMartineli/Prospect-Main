@@ -5,6 +5,7 @@ WORKDIR /app
 # Instalar dependências Python
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+RUN playwright install chromium
 
 # Copiar o código fonte
 COPY . .
