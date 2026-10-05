@@ -244,14 +244,22 @@ async def scrape_maps(query: str, max_results: int, headless: bool) -> list[Lead
         page = await ctx.new_page()
 
         # Bloquear imagens e fontes para carregar 4x mais rapido e gastar muito menos memoria
-        await page.route(
-            "**/*",
-            lambda route: route.abort()
-            if route.request.resource_type in ["image", "media", "font"]
-            else route.continue_(),
-        )
+        async def block_heavy_assets(route):
+            try:
+                if route.request.resource_type in ["image", "media", "font"]:
+                    await route.abort()
+                else:
+                    await route.continue_()
+            except Exception:
+                pass
 
-        await page.goto(f"https://www.google.com/maps/search/{query.replace(' ', '+')}", wait_until="domcontentloaded")
+        await page.route("**/*", block_heavy_assets)
+
+        await page.goto(
+            f"https://www.google.com/maps/search/{query.replace(' ', '+')}",
+            wait_until="domcontentloaded",
+            timeout=45000
+        )
         await page.wait_for_timeout(1500)
 
         try:
