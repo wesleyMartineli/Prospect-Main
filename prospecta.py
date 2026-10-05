@@ -32,7 +32,7 @@ except ImportError:
     _scraper = None
     HAS_CLOUDSCRAPER = False
 
-REQUEST_TIMEOUT = 8
+REQUEST_TIMEOUT = 4
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
 GOOGLEBOT_UA = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
 CACHE_DIR = ".cache"
@@ -232,7 +232,10 @@ async def scrape_maps(query: str, max_results: int, headless: bool) -> list[Lead
     leads: list[Lead] = []
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=headless)
+        browser = await p.chromium.launch(
+            headless=headless,
+            args=["--disable-dev-shm-usage", "--no-sandbox", "--disable-gpu", "--blink-settings=imagesEnabled=false"]
+        )
         ctx = await browser.new_context(
             user_agent=USER_AGENT,
             locale="pt-BR",
@@ -240,15 +243,29 @@ async def scrape_maps(query: str, max_results: int, headless: bool) -> list[Lead
         )
         page = await ctx.new_page()
 
+        # Bloquear imagens e fontes para carregar 4x mais rapido e gastar muito menos memoria
+        await page.route(
+            "**/*",
+            lambda route: route.abort()
+            if route.request.resource_type in ["image", "media", "font"]
+            else route.continue_(),
+        )
+
         await page.goto(f"https://www.google.com/maps/search/{query.replace(' ', '+')}", wait_until="domcontentloaded")
-        await page.wait_for_timeout(3000)
+        await page.wait_for_timeout(1500)
 
         try:
-            await page.get_by_role("button", name=re.compile("aceitar|accept|concordar", re.I)).click(timeout=2000)
+            buttons = page.locator('button:has-text("Aceitar tudo"), button:has-text("Accept all"), button:has-text("Concordo"), button:has-text("I agree"), form[action*="consent"] button')
+            if await buttons.count() > 0:
+                await buttons.first.click(timeout=1500)
+                await page.wait_for_timeout(1000)
         except Exception:
             pass
 
-        await page.wait_for_selector('[role="feed"]', timeout=15000)
+        try:
+            await page.wait_for_selector('[role="feed"], div[role="main"]', timeout=15000)
+        except Exception:
+            pass
 
         feed = page.locator('[role="feed"]')
         prev_count = 0
@@ -270,7 +287,7 @@ async def scrape_maps(query: str, max_results: int, headless: bool) -> list[Lead
             prev_count = count
 
             await feed.evaluate("el => el.scrollBy(0, 2000)")
-            await page.wait_for_timeout(1500)
+            await page.wait_for_timeout(800)
 
         print(f"   total coletado: {count}            ")
 
@@ -282,7 +299,7 @@ async def scrape_maps(query: str, max_results: int, headless: bool) -> list[Lead
         for i, card in enumerate(cards, 1):
             try:
                 await card.click()
-                await page.wait_for_timeout(1200)
+                await page.wait_for_timeout(600)
 
                 lead = Lead()
                 lead.nome = (await card.get_attribute("aria-label")) or ""
